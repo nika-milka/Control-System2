@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Редактирование дефекта</h2>
+
+    <form method="POST" action="/update_defect/{{ defect.id }}">
+        <div class="mb-3">
+            <label class="form-label">Название дефекта *</label>
+            <input type="text" class="form-control" name="title" 
+                   value="{{ defect.title }}" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Описание</label>
+            <textarea class="form-control" name="description" rows="4">{{ defect.description or '' }}</textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Срочность</label>
+            <select class="form-select" name="severity">
+                <option value="low" {% if defect.severity == 'low' %}selected{% endif %}>Низкая</option>
+                <option value="medium" {% if defect.severity == 'medium' %}selected{% endif %}>Средняя</option>
+                <option value="high" {% if defect.severity == 'high' %}selected{% endif %}>Высокая</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Статус</label>
+            <select class="form-select" name="status">
+                <option value="open" {% if defect.status == 'open' %}selected{% endif %}>Открыт</option>
+                <option value="in_progress" {% if defect.status == 'in_progress' %}selected{% endif %}>В работе</option>
+                <option value="closed" {% if defect.status == 'closed' %}selected{% endif %}>Закрыт</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Назначить (email)</label>
+            <input type="email" class="form-control" name="assigned_to" 
+                   value="{{ defect.assigned_to or '' }}" placeholder="email@example.com">
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+            <a href="/defects" class="btn btn-secondary">Отмена</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

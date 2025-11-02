@@ -17,12 +17,152 @@
 {% endif %}
 
 <div class="row">
-    <!-- Секция для инженеров -->
-    {% if user.role in ['engineer', 'manager', 'admin'] %}
-    <div class="col-md-6">
+    <!-- Секция для руководителей -->
+    {% if user.role in ['director', 'admin'] %}
+    <div class="col-md-12 mt-3">
         <div class="card">
             <div class="card-header">
-                <h5>Мои дефекты</h5>
+                <h5>Статистика проектов</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <h6>Всего задач</h6>
+                                <h3>
+                                    {% if statistics and statistics.tasks_total %}
+                                        {{ statistics.tasks_total }}
+                                    {% else %}
+                                        0
+                                    {% endif %}
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <h6>Выполнено</h6>
+                                <h3>
+                                    {% if statistics and statistics.tasks_completed %}
+                                        {{ statistics.tasks_completed }}
+                                    {% else %}
+                                        0
+                                    {% endif %}
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body">
+                                <h6>Открытые дефекты</h6>
+                                <h3>
+                                    {% if statistics and statistics.defects_open %}
+                                        {{ statistics.defects_open }}
+                                    {% else %}
+                                        0
+                                    {% endif %}
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-danger text-white">
+                            <div class="card-body">
+                                <h6>Просроченные</h6>
+                                <h3>
+                                    {% if statistics and statistics.tasks_overdue %}
+                                        {{ statistics.tasks_overdue }}
+                                    {% else %}
+                                        0
+                                    {% endif %}
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Дополнительная статистика -->
+                {% if statistics %}
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6>Детальная статистика</h6>
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td>Всего дефектов:</td>
+                                            <td><strong>{{ statistics.defects_total|default(0) }}</strong></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Дефектов высокой важности:</td>
+                                            <td><strong>{{ statistics.defects_high_severity|default(0) }}</strong></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Задач высокого приоритета:</td>
+                                            <td><strong>{{ statistics.tasks_high_priority|default(0) }}</strong></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Процент выполнения:</td>
+                                            <td>
+                                                <strong>
+                                                    {% if statistics.tasks_total and statistics.tasks_total > 0 %}
+                                                        {{ (statistics.tasks_completed|default(0) / statistics.tasks_total * 100)|round(1) }}%
+                                                    {% else %}
+                                                        0%
+                                                    {% endif %}
+                                                </strong>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6>Быстрый анализ</h6>
+                            </div>
+                            <div class="card-body">
+                                {% if statistics.tasks_overdue and statistics.tasks_overdue > 0 %}
+                                <div class="alert alert-warning">
+                                    <strong>Внимание!</strong> Есть {{ statistics.tasks_overdue }} просроченных задач
+                                </div>
+                                {% endif %}
+                                
+                                {% if statistics.defects_high_severity and statistics.defects_high_severity > 0 %}
+                                <div class="alert alert-danger">
+                                    <strong>Критично!</strong> {{ statistics.defects_high_severity }} дефектов высокой важности требуют внимания
+                                </div>
+                                {% endif %}
+                                
+                                {% if statistics.tasks_completed and statistics.tasks_total and statistics.tasks_completed == statistics.tasks_total %}
+                                <div class="alert alert-success">
+                                    <strong>Отлично!</strong> Все задачи выполнены
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Секция для инженеров и менеджеров -->
+    {% if user.role in ['engineer', 'manager', 'admin'] %}
+    <div class="col-md-6 mt-3">
+        <div class="card">
+            <div class="card-header">
+                <h5>Последние дефекты</h5>
             </div>
             <div class="card-body">
                 {% if defects %}
@@ -70,10 +210,10 @@
 
     <!-- Секция для менеджеров и инженеров -->
     {% if user.role in ['engineer', 'manager', 'admin'] %}
-    <div class="col-md-6">
+    <div class="col-md-6 mt-3">
         <div class="card">
             <div class="card-header">
-                <h5>Мои задачи</h5>
+                <h5>Последние задачи</h5>
             </div>
             <div class="card-body">
                 {% if tasks %}
@@ -117,77 +257,6 @@
         </div>
     </div>
     {% endif %}
-
-    <!-- Секция для руководителей -->
-    {% if user.role in ['director', 'admin'] %}
-    <div class="col-md-12 mt-3">
-        <div class="card">
-            <div class="card-header">
-                <h5>Статистика проектов</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3">
-                        <div class="card bg-primary text-white">
-                            <div class="card-body">
-                                <h6>Всего задач</h6>
-                                <h3>
-                                    {% if statistics and statistics.tasks %}
-                                        {{ statistics.tasks.total|default(0) }}
-                                    {% else %}
-                                        0
-                                    {% endif %}
-                                </h3>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-success text-white">
-                            <div class="card-body">
-                                <h6>Выполнено</h6>
-                                <h3>
-                                    {% if statistics and statistics.tasks %}
-                                        {{ statistics.tasks.completed|default(0) }}
-                                    {% else %}
-                                        0
-                                    {% endif %}
-                                </h3>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-warning text-white">
-                            <div class="card-body">
-                                <h6>Открытые дефекты</h6>
-                                <h3>
-                                    {% if statistics and statistics.defects %}
-                                        {{ statistics.defects.open|default(0) }}
-                                    {% else %}
-                                        0
-                                    {% endif %}
-                                </h3>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-danger text-white">
-                            <div class="card-body">
-                                <h6>Просроченные</h6>
-                                <h3>
-                                    {% if statistics and statistics.tasks %}
-                                        {{ statistics.tasks.overdue|default(0) }}
-                                    {% else %}
-                                        0
-                                    {% endif %}
-                                </h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
 </div>
 
 <!-- Быстрые действия в зависимости от роли -->
@@ -208,14 +277,18 @@
             <a href="/reports" class="btn btn-info">Просмотр отчетов</a>
             {% endif %}
             
-            {% if user.role in ['director', 'admin'] %}
-            <a href="/admin" class="btn btn-warning">Административная панель</a>
+            {% if user.role in ['director'] %}
+            <a href="/reports" class="btn btn-info">Просмотр отчетов</a>
+            <button type="button" class="btn btn-secondary" onclick="location.reload()">
+                Обновить статистику
+            </button>
             {% endif %}
         </div>
     </div>
 </div>
 
 <!-- Модальное окно создания дефекта -->
+{% if user.role in ['engineer', 'manager', 'admin'] %}
 <div class="modal fade" id="createDefectModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -250,8 +323,10 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <!-- Модальное окно создания задачи -->
+{% if user.role in ['manager', 'admin'] %}
 <div class="modal fade" id="createTaskModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -294,4 +369,5 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endblock %}

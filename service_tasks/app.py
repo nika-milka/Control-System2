@@ -3,17 +3,52 @@ import sqlite3
 import uuid
 import logging
 from datetime import datetime
+import time
 
 app = Flask(__name__)
 DATABASE = 'tasks.db'
 
-logging.basicConfig(level=logging.INFO)
+# Настройка структурированного логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
+
+def log_request():
+    """Логирование входящего запроса с трассировкой"""
+    request_id = request.headers.get('X-Request-ID', 'default')
+    user_id = request.headers.get('X-User-ID', 'anonymous')
+    user_role = request.headers.get('X-User-Role', 'unknown')
+    
+    logger.info(f"Request {request_id} - User: {user_id}, Role: {user_role}, "
+                f"Method: {request.method}, Path: {request.path}")
+
+@app.before_request
+def before_request():
+    # Логируем начало обработки запроса
+    log_request()
+    request.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    # Логируем завершение обработки запроса
+    request_id = request.headers.get('X-Request-ID', 'default')
+    processing_time = time.time() - request.start_time
+    
+    logger.info(f"Request {request_id} - Processing time: {processing_time:.3f}s, "
+                f"Status: {response.status_code}")
+    
+    # Добавляем заголовки для трассировки
+    response.headers['X-Request-ID'] = request_id
+    response.headers['X-Processing-Time'] = f'{processing_time:.3f}'
+    
+    return response
 
 def init_db():
     conn = get_db()
@@ -64,6 +99,7 @@ def init_db():
     # Проверяем, есть ли уже демо данные
     defects_count = conn.execute('SELECT COUNT(*) FROM defects').fetchone()[0]
     tasks_count = conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]
+    reports_count = conn.execute('SELECT COUNT(*) FROM reports').fetchone()[0]
     
     if defects_count == 0:
         # Добавляем демо дефекты
@@ -101,22 +137,50 @@ def init_db():
             ''', (task_id, title, description, status, priority, assigned_to, due_date, 'manager@system.com'))
         logger.info("Added demo tasks")
     
+    if reports_count == 0:
+        # Добавляем демо отчеты
+        demo_reports = [
+            ('Еженедельный отчет о прогрессе', 
+             'За прошедшую неделю выполнено 15 задач, открыто 3 новых дефекта. Основные достижения: завершен ремонт кровли, начата замена электропроводки.', 
+             'progress', 'manager@system.com'),
+            ('Финансовый отчет за квартал', 
+             'Общие затраты на проекты: 1,200,000 руб. Выполнено 85% запланированных работ. Остаток бюджета: 150,000 руб.', 
+             'financial', 'manager@system.com'),
+            ('Технический отчет по объекту А', 
+             'Состояние объекта: удовлетворительное. Выявлены незначительные дефекты отделки. Рекомендуется провести плановое обслуживание систем.', 
+             'technical', 'engineer@system.com')
+        ]
+        
+        for title, content, report_type, created_by in demo_reports:
+            report_id = str(uuid.uuid4())
+            conn.execute('''
+                INSERT INTO reports (id, title, content, report_type, created_by)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (report_id, title, content, report_type, created_by))
+        logger.info("Added demo reports")
+    
     conn.commit()
     conn.close()
 
-# Функции для инженеров
+# Функции для инженеров - ДЕФЕКТЫ
 @app.route('/v1/defects', methods=['POST'])
 def create_defect():
+    request_id = request.headers.get('X-Request-ID', 'default')
+    user_id = request.headers.get('X-User-ID', 'anonymous')
+    
     try:
         data = request.get_json()
-        logger.info(f"📨 Получен запрос на создание дефекта: {data}")
+        logger.info(f"Request {request_id} - Creating defect by user {user_id}: {data.get('title')}")
         
         title = data.get('title')
         description = data.get('description', '')
         severity = data.get('severity', 'medium')
         
         if not title:
-            return jsonify({'error': 'Title required'}), 400
+            return jsonify({
+                'success': False,
+                'error': {'code': 'VALIDATION_ERROR', 'message': 'Title required'}
+            }), 400
         
         defect_id = str(uuid.uuid4())
         
@@ -124,11 +188,11 @@ def create_defect():
         conn.execute('''
             INSERT INTO defects (id, title, description, severity, reported_by)
             VALUES (?, ?, ?, ?, ?)
-        ''', (defect_id, title, description, severity, 'demo-user'))
+        ''', (defect_id, title, description, severity, user_id))
         conn.commit()
         conn.close()
         
-        logger.info(f"✅ Дефект создан: {defect_id} - {title}")
+        logger.info(f"Request {request_id} - Defect created: {defect_id}")
         
         return jsonify({
             'success': True, 
@@ -136,17 +200,21 @@ def create_defect():
         }), 201
         
     except Exception as e:
-        logger.error(f"❌ Ошибка создания дефекта: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        logger.error(f"Request {request_id} - Defect creation error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
 @app.route('/v1/defects', methods=['GET'])
 def get_defects():
+    request_id = request.headers.get('X-Request-ID', 'default')
+    
     try:
         conn = get_db()
         defects = conn.execute('SELECT * FROM defects ORDER BY created_at DESC').fetchall()
         conn.close()
         
-        # Преобразуем в словари
         defects_list = []
         for defect in defects:
             defects_list.append({
@@ -156,10 +224,12 @@ def get_defects():
                 'severity': defect['severity'],
                 'status': defect['status'],
                 'reported_by': defect['reported_by'],
-                'created_at': defect['created_at']
+                'assigned_to': defect['assigned_to'],
+                'created_at': defect['created_at'],
+                'updated_at': defect['updated_at']
             })
         
-        logger.info(f"📊 Отправлено дефектов: {len(defects_list)}")
+        logger.info(f"Request {request_id} - Sent {len(defects_list)} defects")
         
         return jsonify({
             'success': True,
@@ -169,29 +239,112 @@ def get_defects():
         })
         
     except Exception as e:
-        logger.error(f"❌ Ошибка получения дефектов: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        logger.error(f"Request {request_id} - Get defects error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
+
+@app.route('/v1/defects/<defect_id>', methods=['GET'])
+def get_defect(defect_id):
+    request_id = request.headers.get('X-Request-ID', 'default')
+    
+    try:
+        conn = get_db()
+        defect = conn.execute(
+            'SELECT * FROM defects WHERE id = ?', (defect_id,)
+        ).fetchone()
+        conn.close()
+        
+        if not defect:
+            return jsonify({
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Defect not found'}
+            }), 404
+        
+        defect_data = {
+            'id': defect['id'],
+            'title': defect['title'],
+            'description': defect['description'],
+            'severity': defect['severity'],
+            'status': defect['status'],
+            'reported_by': defect['reported_by'],
+            'assigned_to': defect['assigned_to'],
+            'created_at': defect['created_at'],
+            'updated_at': defect['updated_at']
+        }
+        
+        logger.info(f"Request {request_id} - Defect retrieved: {defect_id}")
+        
+        return jsonify({
+            'success': True,
+            'data': defect_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Request {request_id} - Get defect error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
 @app.route('/v1/defects/<defect_id>', methods=['PUT'])
 def update_defect(defect_id):
+    request_id = request.headers.get('X-Request-ID', 'default')
+    
     try:
         data = request.get_json()
-        status = data.get('status')
+        logger.info(f"Request {request_id} - Updating defect {defect_id}: {data}")
+        
+        title = data.get('title')
         description = data.get('description')
+        severity = data.get('severity')
+        status = data.get('status')
+        assigned_to = data.get('assigned_to')
         
         conn = get_db()
         
+        # Проверяем существование дефекта
+        existing_defect = conn.execute(
+            'SELECT * FROM defects WHERE id = ?', (defect_id,)
+        ).fetchone()
+        
+        if not existing_defect:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Defect not found'}
+            }), 404
+        
+        updates = []
+        params = []
+        
+        if title:
+            updates.append('title = ?')
+            params.append(title)
+        if description is not None:
+            updates.append('description = ?')
+            params.append(description)
+        if severity:
+            updates.append('severity = ?')
+            params.append(severity)
         if status:
-            conn.execute('UPDATE defects SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', 
-                        (status, defect_id))
-        if description:
-            conn.execute('UPDATE defects SET description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', 
-                        (description, defect_id))
+            updates.append('status = ?')
+            params.append(status)
+        if assigned_to is not None:
+            updates.append('assigned_to = ?')
+            params.append(assigned_to)
+            
+        if updates:
+            updates.append('updated_at = CURRENT_TIMESTAMP')
+            query = f'UPDATE defects SET {", ".join(updates)} WHERE id = ?'
+            params.append(defect_id)
+            conn.execute(query, params)
         
         conn.commit()
         conn.close()
         
-        logger.info(f"✅ Дефект обновлен: {defect_id}")
+        logger.info(f"Request {request_id} - Defect updated: {defect_id}")
         
         return jsonify({
             'success': True,
@@ -199,15 +352,21 @@ def update_defect(defect_id):
         })
         
     except Exception as e:
-        logger.error(f"❌ Ошибка обновления дефекта: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        logger.error(f"Request {request_id} - Defect update error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
-# Функции для менеджеров
+# Функции для менеджеров - ЗАДАЧИ
 @app.route('/v1/tasks', methods=['POST'])
 def create_task():
+    request_id = request.headers.get('X-Request-ID', 'default')
+    user_id = request.headers.get('X-User-ID', 'anonymous')
+    
     try:
         data = request.get_json()
-        logger.info(f"📨 Получен запрос на создание задачи: {data}")
+        logger.info(f"Request {request_id} - Creating task by user {user_id}: {data.get('title')}")
         
         title = data.get('title')
         description = data.get('description', '')
@@ -217,7 +376,10 @@ def create_task():
         
         if not title:
             logger.error("❌ Отсутствует название задачи")
-            return jsonify({'error': 'Title required'}), 400
+            return jsonify({
+                'success': False,
+                'error': {'code': 'VALIDATION_ERROR', 'message': 'Title required'}
+            }), 400
         
         task_id = str(uuid.uuid4())
         
@@ -225,12 +387,12 @@ def create_task():
         conn.execute('''
             INSERT INTO tasks (id, title, description, priority, assigned_to, due_date, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (task_id, title, description, priority, assigned_to, due_date, 'system'))
+        ''', (task_id, title, description, priority, assigned_to, due_date, user_id))
         
         conn.commit()
         conn.close()
         
-        logger.info(f"✅ Задача создана: {task_id} - {title}")
+        logger.info(f"Request {request_id} - Task created: {task_id}")
         
         return jsonify({
             'success': True, 
@@ -241,11 +403,16 @@ def create_task():
         }), 201
         
     except Exception as e:
-        logger.error(f"❌ Ошибка создания задачи: {str(e)}")
-        return jsonify({'error': f'Server error: {str(e)}'}), 500
+        logger.error(f"Request {request_id} - Task creation error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': f'Server error: {str(e)}'}
+        }), 500
 
 @app.route('/v1/tasks', methods=['GET'])
 def get_tasks():
+    request_id = request.headers.get('X-Request-ID', 'default')
+    
     try:
         conn = get_db()
         tasks = conn.execute('SELECT * FROM tasks ORDER BY created_at DESC').fetchall()
@@ -262,10 +429,11 @@ def get_tasks():
                 'priority': task['priority'],
                 'assigned_to': task['assigned_to'],
                 'created_at': task['created_at'],
-                'due_date': task['due_date']
+                'due_date': task['due_date'],
+                'updated_at': task['updated_at']
             })
         
-        logger.info(f"📊 Отправлено задач: {len(tasks_list)}")
+        logger.info(f"Request {request_id} - Sent {len(tasks_list)} tasks")
         
         return jsonify({
             'success': True,
@@ -275,31 +443,104 @@ def get_tasks():
         })
         
     except Exception as e:
-        logger.error(f"❌ Ошибка получения задач: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        logger.error(f"Request {request_id} - Get tasks error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
+
+@app.route('/v1/tasks/<task_id>', methods=['GET'])
+def get_task(task_id):
+    request_id = request.headers.get('X-Request-ID', 'default')
+    
+    try:
+        conn = get_db()
+        task = conn.execute(
+            'SELECT * FROM tasks WHERE id = ?', (task_id,)
+        ).fetchone()
+        conn.close()
+        
+        if not task:
+            return jsonify({
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Task not found'}
+            }), 404
+        
+        task_data = {
+            'id': task['id'],
+            'title': task['title'],
+            'description': task['description'],
+            'status': task['status'],
+            'priority': task['priority'],
+            'assigned_to': task['assigned_to'],
+            'due_date': task['due_date'],
+            'created_by': task['created_by'],
+            'created_at': task['created_at'],
+            'updated_at': task['updated_at']
+        }
+        
+        logger.info(f"Request {request_id} - Task retrieved: {task_id}")
+        
+        return jsonify({
+            'success': True,
+            'data': task_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Request {request_id} - Get task error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
 @app.route('/v1/tasks/<task_id>', methods=['PUT'])
 def update_task(task_id):
+    request_id = request.headers.get('X-Request-ID', 'default')
+    
     try:
         data = request.get_json()
-        logger.info(f"📨 Обновление задачи {task_id}: {data}")
+        logger.info(f"Request {request_id} - Updating task {task_id}: {data}")
         
+        title = data.get('title')
+        description = data.get('description')
         status = data.get('status')
+        priority = data.get('priority')
         assigned_to = data.get('assigned_to')
         due_date = data.get('due_date')
         
         conn = get_db()
         
+        # Проверяем существование задачи
+        existing_task = conn.execute(
+            'SELECT * FROM tasks WHERE id = ?', (task_id,)
+        ).fetchone()
+        
+        if not existing_task:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Task not found'}
+            }), 404
+        
         updates = []
         params = []
         
+        if title:
+            updates.append('title = ?')
+            params.append(title)
+        if description is not None:
+            updates.append('description = ?')
+            params.append(description)
         if status:
             updates.append('status = ?')
             params.append(status)
-        if assigned_to:
+        if priority:
+            updates.append('priority = ?')
+            params.append(priority)
+        if assigned_to is not None:
             updates.append('assigned_to = ?')
             params.append(assigned_to)
-        if due_date:
+        if due_date is not None:
             updates.append('due_date = ?')
             params.append(due_date)
             
@@ -312,7 +553,7 @@ def update_task(task_id):
         conn.commit()
         conn.close()
         
-        logger.info(f"✅ Задача обновлена: {task_id}")
+        logger.info(f"Request {request_id} - Task updated: {task_id}")
         
         return jsonify({
             'success': True,
@@ -320,22 +561,31 @@ def update_task(task_id):
         })
         
     except Exception as e:
-        logger.error(f"❌ Ошибка обновления задачи: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        logger.error(f"Request {request_id} - Task update error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
 # Функции для отчетов (менеджеры)
 @app.route('/v1/reports', methods=['POST'])
 def create_report():
+    request_id = request.headers.get('X-Request-ID', 'default')
+    user_id = request.headers.get('X-User-ID', 'anonymous')
+    
     try:
         data = request.get_json()
-        logger.info(f"📨 Получен запрос на создание отчета: {data}")
+        logger.info(f"Request {request_id} - Creating report by user {user_id}: {data.get('title')}")
         
         title = data.get('title')
         content = data.get('content', '')
         report_type = data.get('report_type', 'general')
         
         if not title:
-            return jsonify({'error': 'Title required'}), 400
+            return jsonify({
+                'success': False,
+                'error': {'code': 'VALIDATION_ERROR', 'message': 'Title required'}
+            }), 400
         
         report_id = str(uuid.uuid4())
         
@@ -343,11 +593,11 @@ def create_report():
         conn.execute('''
             INSERT INTO reports (id, title, content, created_by, report_type)
             VALUES (?, ?, ?, ?, ?)
-        ''', (report_id, title, content, 'system', report_type))
+        ''', (report_id, title, content, user_id, report_type))
         conn.commit()
         conn.close()
         
-        logger.info(f"✅ Отчет создан: {report_id} - {title}")
+        logger.info(f"Request {request_id} - Report created: {report_id}")
         
         return jsonify({
             'success': True, 
@@ -355,11 +605,16 @@ def create_report():
         }), 201
         
     except Exception as e:
-        logger.error(f"❌ Ошибка создания отчета: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        logger.error(f"Request {request_id} - Report creation error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
 @app.route('/v1/reports', methods=['GET'])
 def get_reports():
+    request_id = request.headers.get('X-Request-ID', 'default')
+    
     try:
         conn = get_db()
         reports = conn.execute('SELECT * FROM reports ORDER BY created_at DESC').fetchall()
@@ -375,7 +630,7 @@ def get_reports():
                 'created_at': report['created_at']
             })
         
-        logger.info(f"📊 Отправлено отчетов: {len(reports_list)}")
+        logger.info(f"Request {request_id} - Sent {len(reports_list)} reports")
         
         return jsonify({
             'success': True,
@@ -385,12 +640,229 @@ def get_reports():
         })
         
     except Exception as e:
-        logger.error(f"❌ Ошибка получения отчетов: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        logger.error(f"Request {request_id} - Get reports error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
+
+@app.route('/v1/reports/<report_id>', methods=['GET'])
+def get_report(report_id):
+    request_id = request.headers.get('X-Request-ID', 'default')
+    
+    try:
+        conn = get_db()
+        report = conn.execute(
+            'SELECT * FROM reports WHERE id = ?', (report_id,)
+        ).fetchone()
+        conn.close()
+        
+        if not report:
+            return jsonify({
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Report not found'}
+            }), 404
+        
+        report_data = {
+            'id': report['id'],
+            'title': report['title'],
+            'content': report['content'],
+            'report_type': report['report_type'],
+            'created_by': report['created_by'],
+            'created_at': report['created_at']
+        }
+        
+        logger.info(f"Request {request_id} - Report retrieved: {report_id}")
+        
+        return jsonify({
+            'success': True,
+            'data': report_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Request {request_id} - Get report error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
+
+@app.route('/v1/reports/<report_id>', methods=['PUT'])
+def update_report(report_id):
+    request_id = request.headers.get('X-Request-ID', 'default')
+    user_id = request.headers.get('X-User-ID', 'anonymous')
+    
+    try:
+        data = request.get_json()
+        logger.info(f"Request {request_id} - Updating report {report_id} by user {user_id}")
+        
+        title = data.get('title')
+        content = data.get('content')
+        report_type = data.get('report_type')
+        
+        conn = get_db()
+        
+        # Проверяем существование отчета
+        existing_report = conn.execute(
+            'SELECT * FROM reports WHERE id = ?', (report_id,)
+        ).fetchone()
+        
+        if not existing_report:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Report not found'}
+            }), 404
+        
+        updates = []
+        params = []
+        
+        if title:
+            updates.append('title = ?')
+            params.append(title)
+        if content:
+            updates.append('content = ?')
+            params.append(content)
+        if report_type:
+            updates.append('report_type = ?')
+            params.append(report_type)
+            
+        if updates:
+            query = f'UPDATE reports SET {", ".join(updates)} WHERE id = ?'
+            params.append(report_id)
+            conn.execute(query, params)
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Request {request_id} - Report updated: {report_id}")
+        
+        return jsonify({
+            'success': True,
+            'data': {'message': 'Report updated successfully'}
+        })
+        
+    except Exception as e:
+        logger.error(f"Request {request_id} - Report update error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
+
+@app.route('/v1/reports/<report_id>', methods=['DELETE'])
+def delete_report(report_id):
+    request_id = request.headers.get('X-Request-ID', 'default')
+    user_id = request.headers.get('X-User-ID', 'anonymous')
+    
+    try:
+        conn = get_db()
+        
+        # Проверяем существование отчета
+        existing_report = conn.execute(
+            'SELECT * FROM reports WHERE id = ?', (report_id,)
+        ).fetchone()
+        
+        if not existing_report:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Report not found'}
+            }), 404
+        
+        # Удаляем отчет
+        conn.execute('DELETE FROM reports WHERE id = ?', (report_id,))
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Request {request_id} - Report deleted: {report_id} by user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'data': {'message': 'Report deleted successfully'}
+        })
+        
+    except Exception as e:
+        logger.error(f"Request {request_id} - Report deletion error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
+
+# Новый эндпоинт для генерации отчетов по статистике
+@app.route('/v1/reports/generate/statistics', methods=['POST'])
+def generate_statistics_report():
+    request_id = request.headers.get('X-Request-ID', 'default')
+    user_id = request.headers.get('X-User-ID', 'anonymous')
+    
+    try:
+        data = request.get_json() or {}
+        report_type = data.get('report_type', 'statistics')
+        title = data.get('title', 'Статистический отчет')
+        
+        conn = get_db()
+        
+        # Получаем статистику
+        defects_count = conn.execute('SELECT COUNT(*) FROM defects').fetchone()[0]
+        tasks_count = conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]
+        open_defects = conn.execute('SELECT COUNT(*) FROM defects WHERE status = "open"').fetchone()[0]
+        completed_tasks = conn.execute('SELECT COUNT(*) FROM tasks WHERE status = "completed"').fetchone()[0]
+        high_priority_tasks = conn.execute('SELECT COUNT(*) FROM tasks WHERE priority = "high"').fetchone()[0]
+        overdue_tasks = conn.execute('SELECT COUNT(*) FROM tasks WHERE due_date < DATE("now") AND status != "completed"').fetchone()[0]
+        
+        # Генерируем содержание отчета
+        content = f"""
+СТАТИСТИЧЕСКИЙ ОТЧЕТ
+Сгенерировано: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Пользователь: {user_id}
+
+ОБЩАЯ СТАТИСТИКА:
+- Всего задач: {tasks_count}
+- Всего дефектов: {defects_count}
+- Выполненных задач: {completed_tasks}
+- Открытых дефектов: {open_defects}
+
+АНАЛИТИКА:
+- Задач с высоким приоритетом: {high_priority_tasks}
+- Просроченных задач: {overdue_tasks}
+- Процент выполнения: {(completed_tasks / tasks_count * 100) if tasks_count > 0 else 0:.1f}%
+
+РЕКОМЕНДАЦИИ:
+1. Обратить внимание на {overdue_tasks} просроченных задач
+2. Приоритетно решить {high_priority_tasks} важных задач
+3. Обработать {open_defects} открытых дефектов
+"""
+        
+        report_id = str(uuid.uuid4())
+        
+        conn.execute('''
+            INSERT INTO reports (id, title, content, created_by, report_type)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (report_id, title, content.strip(), user_id, report_type))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Request {request_id} - Statistics report generated: {report_id}")
+        
+        return jsonify({
+            'success': True, 
+            'data': {
+                'report_id': report_id,
+                'message': 'Statistics report generated successfully'
+            }
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Request {request_id} - Statistics report generation error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
 # Статистика для руководителей
 @app.route('/v1/statistics', methods=['GET'])
 def get_statistics():
+    request_id = request.headers.get('X-Request-ID', 'default')
+    
     try:
         conn = get_db()
         
@@ -406,7 +878,7 @@ def get_statistics():
         # Просроченные задачи
         overdue_tasks = conn.execute('''
             SELECT COUNT(*) FROM tasks 
-            WHERE due_date < DATE('now') AND status != 'completed'
+            WHERE due_date < DATE("now") AND status != "completed"
         ''').fetchone()[0]
         
         # Статистика по дефектам
@@ -415,24 +887,16 @@ def get_statistics():
         conn.close()
         
         stats = {
-            'tasks': {
-                'total': tasks_count,
-                'completed': completed_tasks,
-                'high_priority': high_priority_tasks,
-                'overdue': overdue_tasks
-            },
-            'defects': {
-                'total': defects_count,
-                'open': open_defects,
-                'high_severity': high_severity_defects
-            },
-            'sites': {
-                'active': 3,
-                'completed': 1
-            }
+            'tasks_total': tasks_count,
+            'defects_total': defects_count,
+            'defects_open': open_defects,
+            'tasks_completed': completed_tasks,
+            'tasks_high_priority': high_priority_tasks,
+            'tasks_overdue': overdue_tasks,
+            'defects_high_severity': high_severity_defects
         }
         
-        logger.info(f"📈 Статистика: {stats}")
+        logger.info(f"Request {request_id} - Statistics: {stats}")
         
         return jsonify({
             'success': True,
@@ -440,14 +904,33 @@ def get_statistics():
         })
         
     except Exception as e:
-        logger.error(f"❌ Ошибка статистики: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        logger.error(f"Request {request_id} - Statistics error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({'status': 'healthy', 'service': 'tasks'})
+    request_id = request.headers.get('X-Request-ID', 'default')
+    logger.info(f"Request {request_id} - Health check")
+    
+    return jsonify({
+        'status': 'healthy', 
+        'service': 'tasks',
+        'timestamp': datetime.now().isoformat()
+    })
+
+# Добавляем обработчик для корневого пути
+@app.route('/')
+def root():
+    return jsonify({
+        'service': 'tasks-service',
+        'version': '1.0',
+        'status': 'running'
+    })
 
 if __name__ == '__main__':
-    logger.info("🚀 Запуск сервиса задач...")
+    logger.info("🚀 Запуск сервиса задач с трассировкой...")
     init_db()
     app.run(host='0.0.0.0', port=5002, debug=True)

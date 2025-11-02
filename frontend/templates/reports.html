@@ -12,6 +12,9 @@
     <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createReportModal">
         Создать отчет
     </button>
+    <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#generateStatisticsModal">
+        Сгенерировать статистический отчет
+    </button>
 </div>
 {% endif %}
 
@@ -24,35 +27,59 @@
                 <th>Тип</th>
                 <th>Содержание</th>
                 <th>Дата создания</th>
+                <th>Действия</th>
             </tr>
         </thead>
         <tbody>
             {% for report in reports %}
             <tr>
-                <td>{{ report.title }}</td>
+                <td>
+                    <a href="{{ url_for('report_detail', report_id=report.id) }}" class="text-decoration-none">
+                        {{ report.title }}
+                    </a>
+                </td>
                 <td>
                     <span class="badge 
                         {% if report.report_type == 'progress' %}bg-primary
                         {% elif report.report_type == 'financial' %}bg-success
+                        {% elif report.report_type == 'statistics' %}bg-info
+                        {% elif report.report_type == 'technical' %}bg-warning
                         {% else %}bg-secondary{% endif %}">
                         {{ report.report_type }}
                     </span>
                 </td>
                 <td>{{ report.content|truncate(100) }}</td>
                 <td>{{ report.created_at }}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{{ url_for('report_detail', report_id=report.id) }}" 
+                           class="btn btn-outline-primary">Просмотр</a>
+                        {% if user.role in ['manager', 'admin'] %}
+                        <a href="{{ url_for('edit_report', report_id=report.id) }}" 
+                           class="btn btn-outline-warning">Редактировать</a>
+                        <form method="POST" action="{{ url_for('delete_report', report_id=report.id) }}" 
+                              class="d-inline" onsubmit="return confirm('Удалить этот отчет?')">
+                            <button type="submit" class="btn btn-outline-danger">Удалить</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 {% else %}
-<div class="alert alert-info">Нет отчетов для отображения</div>
+<div class="alert alert-info">
+    <h5>Нет отчетов для отображения</h5>
+    <p>Создайте первый отчет или сгенерируйте автоматический статистический отчет.</p>
+</div>
 {% endif %}
 
 <!-- Модальное окно создания отчета -->
 {% if user.role in ['manager', 'admin'] %}
 <div class="modal fade" id="createReportModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Создать отчет</h5>
@@ -61,8 +88,9 @@
             <form method="POST" action="/create_report">
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Название отчета</label>
-                        <input type="text" class="form-control" name="title" required>
+                        <label class="form-label">Название отчета *</label>
+                        <input type="text" class="form-control" name="title" required 
+                               placeholder="Введите название отчета">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Тип отчета</label>
@@ -71,16 +99,56 @@
                             <option value="progress">Отчет о прогрессе</option>
                             <option value="financial">Финансовый отчет</option>
                             <option value="technical">Технический отчет</option>
+                            <option value="statistics">Статистический отчет</option>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Содержание</label>
-                        <textarea class="form-control" name="content" rows="5" required></textarea>
+                        <label class="form-label">Содержание *</label>
+                        <textarea class="form-control" name="content" rows="8" required 
+                                  placeholder="Подробное содержание отчета..."></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
                     <button type="submit" class="btn btn-success">Создать отчет</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно генерации статистического отчета -->
+<div class="modal fade" id="generateStatisticsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Сгенерировать статистический отчет</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="/generate_statistics_report">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название отчета</label>
+                        <input type="text" class="form-control" name="title" 
+                               value="Статистический отчет {{ now.strftime('%Y-%m-%d') if now else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип отчета</label>
+                        <select class="form-select" name="report_type">
+                            <option value="statistics">Статистический</option>
+                            <option value="progress">Прогресс</option>
+                        </select>
+                    </div>
+                    <div class="alert alert-info">
+                        <small>
+                            <strong>Информация:</strong> Будет сгенерирован отчет с текущей статистикой по задачам и дефектам, 
+                            включая аналитику и рекомендации.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-info">Сгенерировать</button>
                 </div>
             </form>
         </div>

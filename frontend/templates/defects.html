@@ -32,8 +32,12 @@
                 <th>Описание</th>
                 <th>Статус</th>
                 <th>Срочность</th>
+                <th>Назначено</th>
                 <th>Дата создания</th>
+                <th>Обновлено</th>
+                {% if user.role in ['engineer', 'manager', 'admin'] %}
                 <th>Действия</th>
+                {% endif %}
             </tr>
         </thead>
         <tbody>
@@ -64,19 +68,25 @@
                         {% else %}{{ defect.severity }}{% endif %}
                     </span>
                 </td>
+                <td>{{ defect.assigned_to or 'Не назначено' }}</td>
                 <td>{{ defect.created_at }}</td>
+                <td>{{ defect.updated_at or defect.created_at }}</td>
+                {% if user.role in ['engineer', 'manager', 'admin'] %}
                 <td>
-                    {% if user.role in ['engineer', 'manager', 'admin'] %}
-                    <button class="btn btn-sm btn-outline-primary" 
-                            onclick="updateDefectStatus('{{ defect.id }}', 'in_progress')">
-                        В работу
-                    </button>
-                    <button class="btn btn-sm btn-outline-success" 
-                            onclick="updateDefectStatus('{{ defect.id }}', 'closed')">
-                        Закрыть
-                    </button>
-                    {% endif %}
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" 
+                                onclick="updateDefectStatus('{{ defect.id }}', 'in_progress')">
+                            В работу
+                        </button>
+                        <button class="btn btn-outline-success" 
+                                onclick="updateDefectStatus('{{ defect.id }}', 'closed')">
+                            Закрыть
+                        </button>
+                        <a href="/edit_defect/{{ defect.id }}" 
+                           class="btn btn-outline-warning">Редактировать</a>
+                    </div>
                 </td>
+                {% endif %}
             </tr>
             {% endfor %}
         </tbody>
@@ -140,19 +150,18 @@ function toggleDebug() {
 
 function updateDefectStatus(defectId, status) {
     if (confirm('Вы уверены, что хотите изменить статус дефекта?')) {
-        fetch(`/v1/defects/${defectId}`, {
-            method: 'PUT',
+        fetch(`/update_defect_status/${defectId}`, {
+            method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: JSON.stringify({ status: status })
+            body: `status=${status}`
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
+        .then(response => {
+            if (response.ok) {
                 location.reload();
             } else {
-                alert('Ошибка при обновлении статуса: ' + (data.error || 'Неизвестная ошибка'));
+                alert('Ошибка при обновлении статуса');
             }
         })
         .catch(error => {

@@ -27,6 +27,10 @@
                 <th>Назначена</th>
                 <th>Срок</th>
                 <th>Дата создания</th>
+                <th>Обновлено</th>
+                {% if user.role in ['manager', 'admin'] %}
+                <th>Действия</th>
+                {% endif %}
             </tr>
         </thead>
         <tbody>
@@ -70,6 +74,15 @@
                     {% endif %}
                 </td>
                 <td>{{ task.created_at }}</td>
+                <td>{{ task.updated_at or task.created_at }}</td>
+                {% if user.role in ['manager', 'admin'] %}
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <a href="/edit_task/{{ task.id }}" 
+                           class="btn btn-outline-warning">Редактировать</a>
+                    </div>
+                </td>
+                {% endif %}
             </tr>
             {% endfor %}
         </tbody>

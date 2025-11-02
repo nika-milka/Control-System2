@@ -3,8 +3,13 @@ import sqlite3
 import uuid
 import hashlib
 import logging
+import jwt
+import datetime
 
 app = Flask(__name__)
+app.config['JWT_SECRET_KEY'] = 'your-secret-key-change-in-production'
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=24)
+
 DATABASE = 'users.db'
 
 logging.basicConfig(level=logging.INFO)
@@ -42,7 +47,6 @@ def init_db():
         ).fetchone()
         
         if not user_exists:
-            # Simple password hash for demo
             password_hash = hashlib.md5(password.encode()).hexdigest()
             user_id = str(uuid.uuid4())
             conn.execute(
@@ -54,25 +58,45 @@ def init_db():
     conn.commit()
     conn.close()
 
+def create_jwt_token(user_data):
+    """Создание JWT токена"""
+    payload = {
+        'user_id': user_data['id'],
+        'email': user_data['email'],
+        'role': user_data['role'],
+        'exp': datetime.datetime.utcnow() + app.config['JWT_ACCESS_TOKEN_EXPIRES'],
+        'iat': datetime.datetime.utcnow()
+    }
+    return jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm='HS256')
+
 @app.route('/v1/auth/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No JSON data provided'}), 400
+            return jsonify({
+                'success': False,
+                'error': {'code': 'NO_DATA', 'message': 'No JSON data provided'}
+            }), 400
             
         email = data.get('email')
         password = data.get('password')
         name = data.get('name')
-        role = data.get('role', 'engineer')  # Добавлен выбор роли
+        role = data.get('role', 'engineer')
         
         # Проверка допустимых ролей
         valid_roles = ['engineer', 'manager', 'director']
         if role not in valid_roles:
-            return jsonify({'error': 'Invalid role. Must be engineer, manager, or director'}), 400
+            return jsonify({
+                'success': False,
+                'error': {'code': 'INVALID_ROLE', 'message': 'Invalid role. Must be engineer, manager, or director'}
+            }), 400
         
         if not all([email, password, name]):
-            return jsonify({'error': 'Missing required fields'}), 400
+            return jsonify({
+                'success': False,
+                'error': {'code': 'MISSING_FIELDS', 'message': 'Missing required fields'}
+            }), 400
         
         conn = get_db()
         
@@ -82,7 +106,10 @@ def register():
         
         if existing:
             conn.close()
-            return jsonify({'error': 'User already exists'}), 409
+            return jsonify({
+                'success': False,
+                'error': {'code': 'USER_EXISTS', 'message': 'User already exists'}
+            }), 409
         
         user_id = str(uuid.uuid4())
         password_hash = hashlib.md5(password.encode()).hexdigest()
@@ -92,7 +119,15 @@ def register():
             (user_id, email, password_hash, name, role)
         )
         conn.commit()
+        
+        # Получаем созданного пользователя
+        user = conn.execute(
+            'SELECT * FROM users WHERE id = ?', (user_id,)
+        ).fetchone()
         conn.close()
+        
+        # Создаем JWT токен
+        token = create_jwt_token(dict(user))
         
         logger.info(f"New user registered: {email} as {role}")
         
@@ -100,26 +135,41 @@ def register():
             'success': True, 
             'data': {
                 'user_id': user_id,
-                'role': role
+                'token': token,
+                'user': {
+                    'id': user_id,
+                    'email': email,
+                    'name': name,
+                    'role': role
+                }
             }
         }), 201
         
     except Exception as e:
         logger.error(f"Register error: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
 @app.route('/v1/auth/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No JSON data provided'}), 400
+            return jsonify({
+                'success': False,
+                'error': {'code': 'NO_DATA', 'message': 'No JSON data provided'}
+            }), 400
             
         email = data.get('email')
         password = data.get('password')
         
         if not email or not password:
-            return jsonify({'error': 'Email and password required'}), 400
+            return jsonify({
+                'success': False,
+                'error': {'code': 'MISSING_CREDENTIALS', 'message': 'Email and password required'}
+            }), 400
         
         conn = get_db()
         user = conn.execute(
@@ -129,15 +179,21 @@ def login():
         
         if not user:
             logger.warning(f"Login failed: user {email} not found")
-            return jsonify({'error': 'Invalid credentials'}), 401
+            return jsonify({
+                'success': False,
+                'error': {'code': 'INVALID_CREDENTIALS', 'message': 'Invalid credentials'}
+            }), 401
         
         password_hash = hashlib.md5(password.encode()).hexdigest()
         if user['password_hash'] != password_hash:
             logger.warning(f"Login failed: invalid password for {email}")
-            return jsonify({'error': 'Invalid credentials'}), 401
+            return jsonify({
+                'success': False,
+                'error': {'code': 'INVALID_CREDENTIALS', 'message': 'Invalid credentials'}
+            }), 401
         
-        # Simple token for demo
-        token = f"token-{user['id']}"
+        # Создаем JWT токен
+        token = create_jwt_token(dict(user))
         
         logger.info(f"User logged in: {email} as {user['role']}")
         
@@ -156,12 +212,21 @@ def login():
         
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
 
-# Add users list endpoint for admin
 @app.route('/v1/users', methods=['GET'])
 def get_users():
     try:
+        # Логируем информацию о запросе
+        request_id = request.headers.get('X-Request-ID', 'default')
+        user_id = request.headers.get('X-User-ID')
+        user_role = request.headers.get('X-User-Role')
+        
+        logger.info(f"Users list request - RequestID: {request_id}, User: {user_id}, Role: {user_role}")
+        
         conn = get_db()
         users = conn.execute(
             'SELECT id, email, name, role, created_at FROM users'
@@ -177,7 +242,14 @@ def get_users():
         
     except Exception as e:
         logger.error(f"Get users error: {str(e)}")
-        return jsonify({'error': 'Server error'}), 500
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVER_ERROR', 'message': 'Server error'}
+        }), 500
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'healthy', 'service': 'users'})
 
 if __name__ == '__main__':
     init_db()

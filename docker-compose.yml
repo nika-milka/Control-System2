@@ -7,6 +7,7 @@ services:
       - "5000:5000"
     environment:
       - FLASK_ENV=development
+      - JWT_SECRET_KEY=your-secret-key-change-in-production
     depends_on:
       - users-service
       - tasks-service
@@ -19,6 +20,7 @@ services:
       - "5001:5001"
     environment:
       - FLASK_ENV=development
+      - JWT_SECRET_KEY=your-secret-key-change-in-production
     networks:
       - app-network
 
@@ -45,4 +47,3 @@ services:
 networks:
   app-network:
     driver: bridge
-    name: app-network

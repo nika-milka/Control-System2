@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Редактирование задачи</h2>
+
+    <form method="POST" action="{{ url_for('update_task', task_id=task.id) }}">
+        <div class="mb-3">
+            <label class="form-label">Название задачи *</label>
+            <input type="text" class="form-control" name="title" 
+                   value="{{ task.title }}" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Описание</label>
+            <textarea class="form-control" name="description" rows="4">{{ task.description or '' }}</textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Приоритет</label>
+            <select class="form-select" name="priority">
+                <option value="low" {% if task.priority == 'low' %}selected{% endif %}>Низкий</option>
+                <option value="medium" {% if task.priority == 'medium' %}selected{% endif %}>Средний</option>
+                <option value="high" {% if task.priority == 'high' %}selected{% endif %}>Высокий</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Статус</label>
+            <select class="form-select" name="status">
+                <option value="pending" {% if task.status == 'pending' %}selected{% endif %}>Ожидает</option>
+                <option value="in_progress" {% if task.status == 'in_progress' %}selected{% endif %}>В работе</option>
+                <option value="completed" {% if task.status == 'completed' %}selected{% endif %}>Выполнена</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Назначить (email)</label>
+            <input type="email" class="form-control" name="assigned_to" 
+                   value="{{ task.assigned_to or '' }}" placeholder="email@example.com">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Срок выполнения</label>
+            <input type="date" class="form-control" name="due_date" 
+                   value="{{ task.due_date or '' }}">
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+            <a href="{{ url_for('tasks_page') }}" class="btn btn-secondary">Отмена</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
