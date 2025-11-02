@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Дефекты</h2>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<!-- Отладочная информация -->
+<div class="alert alert-info d-none" id="debugInfo">
+    <strong>Отладка:</strong>
+    <div>Количество дефектов: <span id="defectsCount">{{ defects|length }}</span></div>
+    <div>Роль пользователя: {{ user.role }}</div>
+</div>
+
+<div class="mb-3">
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createDefectModal">
+        Сообщить о дефекте
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleDebug()">
+        Отладка
+    </button>
+</div>
+
+{% if defects %}
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Описание</th>
+                <th>Статус</th>
+                <th>Срочность</th>
+                <th>Дата создания</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for defect in defects %}
+            <tr>
+                <td>{{ defect.title }}</td>
+                <td>{{ defect.description or '-' }}</td>
+                <td>
+                    <span class="badge 
+                        {% if defect.status == 'closed' %}bg-success
+                        {% elif defect.status == 'in_progress' %}bg-primary
+                        {% elif defect.status == 'open' %}bg-warning
+                        {% else %}bg-secondary{% endif %}">
+                        {% if defect.status == 'open' %}открыт
+                        {% elif defect.status == 'in_progress' %}в работе
+                        {% elif defect.status == 'closed' %}закрыт
+                        {% else %}{{ defect.status }}{% endif %}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge 
+                        {% if defect.severity == 'high' %}bg-danger
+                        {% elif defect.severity == 'medium' %}bg-warning
+                        {% else %}bg-info{% endif %}">
+                        {% if defect.severity == 'high' %}высокая
+                        {% elif defect.severity == 'medium' %}средняя
+                        {% elif defect.severity == 'low' %}низкая
+                        {% else %}{{ defect.severity }}{% endif %}
+                    </span>
+                </td>
+                <td>{{ defect.created_at }}</td>
+                <td>
+                    {% if user.role in ['engineer', 'manager', 'admin'] %}
+                    <button class="btn btn-sm btn-outline-primary" 
+                            onclick="updateDefectStatus('{{ defect.id }}', 'in_progress')">
+                        В работу
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" 
+                            onclick="updateDefectStatus('{{ defect.id }}', 'closed')">
+                        Закрыть
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-warning">
+    <h5>Нет дефектов для отображения</h5>
+    <p class="mb-0">Возможные причины:</p>
+    <ul class="mb-0">
+        <li>Дефекты еще не созданы</li>
+        <li>Проблема с подключением к сервису задач</li>
+        <li>Нет прав для просмотра дефектов</li>
+    </ul>
+</div>
+{% endif %}
+
+<!-- Модальное окно создания дефекта -->
+<div class="modal fade" id="createDefectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Сообщить о дефекте</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="/create_defect">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название дефекта *</label>
+                        <input type="text" class="form-control" name="title" required 
+                               placeholder="Например: Трещина в стене">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание</label>
+                        <textarea class="form-control" name="description" rows="3"
+                                  placeholder="Подробное описание дефекта..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Срочность</label>
+                        <select class="form-select" name="severity">
+                            <option value="low">Низкая</option>
+                            <option value="medium" selected>Средняя</option>
+                            <option value="high">Высокая</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать дефект</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleDebug() {
+    const debugInfo = document.getElementById('debugInfo');
+    debugInfo.classList.toggle('d-none');
+}
+
+function updateDefectStatus(defectId, status) {
+    if (confirm('Вы уверены, что хотите изменить статус дефекта?')) {
+        fetch(`/v1/defects/${defectId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status: status })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Ошибка при обновлении статуса: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Ошибка при обновлении статуса');
+        });
+    }
+}
+</script>
+{% endblock %}

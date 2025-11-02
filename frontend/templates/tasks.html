@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Задачи</h2>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+{% if user.role in ['manager', 'admin'] %}
+<div class="mb-3">
+    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createTaskModal">
+        Создать задачу
+    </button>
+</div>
+{% endif %}
+
+{% if tasks %}
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Описание</th>
+                <th>Статус</th>
+                <th>Приоритет</th>
+                <th>Назначена</th>
+                <th>Срок</th>
+                <th>Дата создания</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr>
+                <td>{{ task.title }}</td>
+                <td>{{ task.description or '-' }}</td>
+                <td>
+                    <span class="badge 
+                        {% if task.status == 'completed' %}bg-success
+                        {% elif task.status == 'in_progress' %}bg-primary
+                        {% elif task.status == 'pending' %}bg-warning
+                        {% else %}bg-secondary{% endif %}">
+                        {% if task.status == 'completed' %}выполнена
+                        {% elif task.status == 'in_progress' %}в работе
+                        {% elif task.status == 'pending' %}ожидает
+                        {% else %}{{ task.status }}{% endif %}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge 
+                        {% if task.priority == 'high' %}bg-danger
+                        {% elif task.priority == 'medium' %}bg-warning
+                        {% else %}bg-info{% endif %}">
+                        {% if task.priority == 'high' %}высокий
+                        {% elif task.priority == 'medium' %}средний
+                        {% elif task.priority == 'low' %}низкий
+                        {% else %}{{ task.priority }}{% endif %}
+                    </span>
+                </td>
+                <td>{{ task.assigned_to or 'Не назначена' }}</td>
+                <td>
+                    {% if task.due_date %}
+                        {{ task.due_date }}
+                        {% if task.status != 'completed' and task.due_date %}
+                            {% set due_date = task.due_date.split(' ')[0] if ' ' in task.due_date else task.due_date %}
+                            <span class="badge bg-danger">срок</span>
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>{{ task.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <h5>Нет задач для отображения</h5>
+    <p class="mb-0">Задачи еще не созданы или произошла ошибка при загрузке.</p>
+</div>
+{% endif %}
+
+<!-- Модальное окно создания задачи -->
+{% if user.role in ['manager', 'admin'] %}
+<div class="modal fade" id="createTaskModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать задачу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="/create_task" id="taskForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название задачи *</label>
+                        <input type="text" class="form-control" name="title" required 
+                               placeholder="Например: Ремонт кровли">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание</label>
+                        <textarea class="form-control" name="description" rows="3"
+                                  placeholder="Подробное описание задачи..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Приоритет</label>
+                        <select class="form-select" name="priority">
+                            <option value="low">Низкий</option>
+                            <option value="medium" selected>Средний</option>
+                            <option value="high">Высокий</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Назначить (email)</label>
+                        <input type="email" class="form-control" name="assigned_to"
+                               placeholder="email@example.com">
+                        <div class="form-text">Оставьте пустым, если не требуется назначение</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Срок выполнения</label>
+                        <input type="date" class="form-control" name="due_date"
+                               min="{{ now.strftime('%Y-%m-%d') if now else '2025-01-01' }}">
+                        <div class="form-text">Укажите дату, когда задача должна быть выполнена</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success">Создать задачу</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Устанавливаем минимальную дату как сегодня
+    const today = new Date().toISOString().split('T')[0];
+    const dueDateInput = document.querySelector('input[name="due_date"]');
+    if (dueDateInput) {
+        dueDateInput.min = today;
+    }
+    
+    // Обработка формы
+    const taskForm = document.getElementById('taskForm');
+    if (taskForm) {
+        taskForm.addEventListener('submit', function(e) {
+            const title = document.querySelector('input[name="title"]').value.trim();
+            if (!title) {
+                e.preventDefault();
+                alert('Пожалуйста, заполните название задачи');
+                return false;
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

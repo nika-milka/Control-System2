@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Отчеты</h2>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+{% if user.role in ['manager', 'admin'] %}
+<div class="mb-3">
+    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createReportModal">
+        Создать отчет
+    </button>
+</div>
+{% endif %}
+
+{% if reports %}
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Тип</th>
+                <th>Содержание</th>
+                <th>Дата создания</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for report in reports %}
+            <tr>
+                <td>{{ report.title }}</td>
+                <td>
+                    <span class="badge 
+                        {% if report.report_type == 'progress' %}bg-primary
+                        {% elif report.report_type == 'financial' %}bg-success
+                        {% else %}bg-secondary{% endif %}">
+                        {{ report.report_type }}
+                    </span>
+                </td>
+                <td>{{ report.content|truncate(100) }}</td>
+                <td>{{ report.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">Нет отчетов для отображения</div>
+{% endif %}
+
+<!-- Модальное окно создания отчета -->
+{% if user.role in ['manager', 'admin'] %}
+<div class="modal fade" id="createReportModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать отчет</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="/create_report">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название отчета</label>
+                        <input type="text" class="form-control" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип отчета</label>
+                        <select class="form-select" name="report_type">
+                            <option value="general">Общий</option>
+                            <option value="progress">Отчет о прогрессе</option>
+                            <option value="financial">Финансовый отчет</option>
+                            <option value="technical">Технический отчет</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Содержание</label>
+                        <textarea class="form-control" name="content" rows="5" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success">Создать отчет</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Панель управления</h2>
+<p>Добро пожаловать, {{ user.name }}! (Роль: 
+    <span class="badge 
+        {% if user.role == 'admin' %}bg-danger
+        {% elif user.role == 'manager' %}bg-warning
+        {% elif user.role == 'director' %}bg-info
+        {% else %}bg-secondary{% endif %}">
+        {{ user.role }}
+    </span>)
+</p>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="row">
+    <!-- Секция для инженеров -->
+    {% if user.role in ['engineer', 'manager', 'admin'] %}
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Мои дефекты</h5>
+            </div>
+            <div class="card-body">
+                {% if defects %}
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Статус</th>
+                            <th>Срочность</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for defect in defects %}
+                        <tr>
+                            <td>{{ defect.title }}</td>
+                            <td>
+                                <span class="badge 
+                                    {% if defect.status == 'closed' %}bg-success
+                                    {% elif defect.status == 'in_progress' %}bg-primary
+                                    {% elif defect.status == 'open' %}bg-warning
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ defect.status }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge 
+                                    {% if defect.severity == 'high' %}bg-danger
+                                    {% elif defect.severity == 'medium' %}bg-warning
+                                    {% else %}bg-info{% endif %}">
+                                    {{ defect.severity }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted">Нет дефектов</p>
+                {% endif %}
+                <a href="/defects" class="btn btn-outline-primary btn-sm">Все дефекты</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Секция для менеджеров и инженеров -->
+    {% if user.role in ['engineer', 'manager', 'admin'] %}
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Мои задачи</h5>
+            </div>
+            <div class="card-body">
+                {% if tasks %}
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Задача</th>
+                            <th>Статус</th>
+                            <th>Приоритет</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in tasks %}
+                        <tr>
+                            <td>{{ task.title }}</td>
+                            <td>
+                                <span class="badge 
+                                    {% if task.status == 'completed' %}bg-success
+                                    {% elif task.status == 'in_progress' %}bg-primary
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ task.status }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge 
+                                    {% if task.priority == 'high' %}bg-danger
+                                    {% elif task.priority == 'medium' %}bg-warning
+                                    {% else %}bg-info{% endif %}">
+                                    {{ task.priority }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted">Нет задач</p>
+                {% endif %}
+                <a href="/tasks" class="btn btn-outline-primary btn-sm">Все задачи</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Секция для руководителей -->
+    {% if user.role in ['director', 'admin'] %}
+    <div class="col-md-12 mt-3">
+        <div class="card">
+            <div class="card-header">
+                <h5>Статистика проектов</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <h6>Всего задач</h6>
+                                <h3>
+                                    {% if statistics and statistics.tasks %}
+                                        {{ statistics.tasks.total|default(0) }}
+                                    {% else %}
+                                        0
+                                    {% endif %}
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <h6>Выполнено</h6>
+                                <h3>
+                                    {% if statistics and statistics.tasks %}
+                                        {{ statistics.tasks.completed|default(0) }}
+                                    {% else %}
+                                        0
+                                    {% endif %}
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body">
+                                <h6>Открытые дефекты</h6>
+                                <h3>
+                                    {% if statistics and statistics.defects %}
+                                        {{ statistics.defects.open|default(0) }}
+                                    {% else %}
+                                        0
+                                    {% endif %}
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-danger text-white">
+                            <div class="card-body">
+                                <h6>Просроченные</h6>
+                                <h3>
+                                    {% if statistics and statistics.tasks %}
+                                        {{ statistics.tasks.overdue|default(0) }}
+                                    {% else %}
+                                        0
+                                    {% endif %}
+                                </h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Быстрые действия в зависимости от роли -->
+<div class="row mt-4">
+    <div class="col-12">
+        <h4>Быстрые действия</h4>
+        <div class="btn-group" role="group">
+            {% if user.role in ['engineer', 'manager', 'admin'] %}
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createDefectModal">
+                Сообщить о дефекте
+            </button>
+            {% endif %}
+            
+            {% if user.role in ['manager', 'admin'] %}
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createTaskModal">
+                Создать задачу
+            </button>
+            <a href="/reports" class="btn btn-info">Просмотр отчетов</a>
+            {% endif %}
+            
+            {% if user.role in ['director', 'admin'] %}
+            <a href="/admin" class="btn btn-warning">Административная панель</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно создания дефекта -->
+<div class="modal fade" id="createDefectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Сообщить о дефекте</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="/create_defect">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название дефекта</label>
+                        <input type="text" class="form-control" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание</label>
+                        <textarea class="form-control" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Срочность</label>
+                        <select class="form-select" name="severity">
+                            <option value="low">Низкая</option>
+                            <option value="medium" selected>Средняя</option>
+                            <option value="high">Высокая</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно создания задачи -->
+<div class="modal fade" id="createTaskModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать задачу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="/create_task">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название задачи</label>
+                        <input type="text" class="form-control" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание</label>
+                        <textarea class="form-control" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Приоритет</label>
+                        <select class="form-select" name="priority">
+                            <option value="low">Низкий</option>
+                            <option value="medium" selected>Средний</option>
+                            <option value="high">Высокий</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Назначить (email)</label>
+                        <input type="email" class="form-control" name="assigned_to">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Срок выполнения</label>
+                        <input type="date" class="form-control" name="due_date">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success">Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

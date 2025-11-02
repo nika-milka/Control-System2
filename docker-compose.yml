@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build: ./api_gateway
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+    depends_on:
+      - users-service
+      - tasks-service
+    networks:
+      - app-network
+
+  users-service:
+    build: ./service_users
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=development
+    networks:
+      - app-network
+
+  tasks-service:
+    build: ./service_tasks
+    ports:
+      - "5002:5002"
+    environment:
+      - FLASK_ENV=development
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5003:5003"
+    environment:
+      - FLASK_ENV=development
+    depends_on:
+      - api-gateway
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+    name: app-network

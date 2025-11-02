@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">Система контроля строительных объектов</h1>
+    <p class="lead">Управление задачами, заказами и отчетностью для строительных проектов</p>
+    <hr class="my-4">
+    <p>Для начала работы войдите в систему или зарегистрируйтесь</p>
+    <a class="btn btn-primary btn-lg" href="{{ url_for('login') }}">Войти</a>
+    <a class="btn btn-outline-primary btn-lg" href="{{ url_for('register') }}">Регистрация</a>
+</div>
+{% endblock %}

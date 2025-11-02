@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Административная панель</h2>
+    <p class="text-muted">Добро пожаловать, {{ user.name }}! (Роль: {{ user.role }})</p>
+
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h5 class="card-title">Всего пользователей</h5>
+                    <h2>{{ users|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h5 class="card-title">Всего дефектов</h5>
+                    <h2>{{ statistics.defects_total|default(0) }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <h5 class="card-title">Всего задач</h5>
+                    <h2>{{ statistics.tasks_total|default(0) }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h5 class="card-title">Открытые дефекты</h5>
+                    <h2>{{ statistics.defects_open|default(0) }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Управление пользователями -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Управление пользователями</h5>
+        </div>
+        <div class="card-body">
+            {% if users %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Имя</th>
+                            <th>Email</th>
+                            <th>Роль</th>
+                            <th>Дата регистрации</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.id[:8] }}...</td>
+                            <td>{{ user.name }}</td>
+                            <td>{{ user.email }}</td>
+                            <td>
+                                <span class="badge 
+                                    {% if user.role == 'admin' %}bg-danger
+                                    {% elif user.role == 'manager' %}bg-warning
+                                    {% elif user.role == 'director' %}bg-info
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ user.role }}
+                                </span>
+                            </td>
+                            <td>{{ user.created_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">Нет пользователей для отображения</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Системная информация -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Системная информация</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Сервисы:</h6>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            API Gateway
+                            <span class="badge bg-success">Работает</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Сервис пользователей
+                            <span class="badge bg-success">Работает</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Сервис задач
+                            <span class="badge bg-success">Работает</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Фронтенд
+                            <span class="badge bg-success">Работает</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h6>Быстрые действия:</h6>
+                    <div class="d-grid gap-2">
+                        <a href="/dashboard" class="btn btn-outline-primary">Панель управления</a>
+                        <a href="/defects" class="btn btn-outline-warning">Просмотр дефектов</a>
+                        <a href="/tasks" class="btn btn-outline-info">Просмотр задач</a>
+                        <button class="btn btn-outline-secondary" onclick="location.reload()">Обновить статистику</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
