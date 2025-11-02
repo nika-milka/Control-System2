@@ -16,6 +16,7 @@
                     {% if session.user.role in ['engineer', 'manager', 'director', 'admin'] %}
                     <a class="nav-link" href="{{ url_for('defects_page') }}">Дефекты</a>
                     <a class="nav-link" href="{{ url_for('tasks_page') }}">Задачи</a>
+                    <a class="nav-link" href="{{ url_for('orders_page') }}">Заказы</a>
                     {% endif %}
                     {% if session.user.role in ['manager', 'director', 'admin'] %}
                     <a class="nav-link" href="{{ url_for('reports_page') }}">Отчеты</a>

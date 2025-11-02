@@ -12,6 +12,52 @@
     </span>)
 </p>
 
+<!-- ... существующий код ... -->
+
+<!-- Секция для заказов -->
+{% if user.role in ['engineer', 'manager', 'admin'] %}
+<div class="col-md-6 mt-3">
+    <div class="card">
+        <div class="card-header">
+            <h5>Последние заказы</h5>
+        </div>
+        <div class="card-body">
+            {% if orders %}
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Заказ</th>
+                        <th>Статус</th>
+                        <th>Сумма</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                    <tr>
+                        <td>{{ order.title|truncate(20) }}</td>
+                        <td>
+                            <span class="badge 
+                                {% if order.status == 'completed' %}bg-success
+                                {% elif order.status == 'in_progress' %}bg-primary
+                                {% elif order.status == 'cancelled' %}bg-danger
+                                {% else %}bg-secondary{% endif %}">
+                                {{ order.status }}
+                            </span>
+                        </td>
+                        <td>{{ "%.2f"|format(order.total_amount) }} руб.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted">Нет заказов</p>
+            {% endif %}
+            <a href="/orders" class="btn btn-outline-primary btn-sm">Все заказы</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
 {% endif %}
@@ -258,6 +304,49 @@
     </div>
     {% endif %}
 </div>
+
+{% if user.role in ['engineer', 'manager', 'admin'] %}
+<div class="col-md-6 mt-3">
+    <div class="card">
+        <div class="card-header">
+            <h5>Последние заказы</h5>
+        </div>
+        <div class="card-body">
+            {% if orders %}
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Заказ</th>
+                        <th>Статус</th>
+                        <th>Сумма</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                    <tr>
+                        <td>{{ order.title|truncate(20) }}</td>
+                        <td>
+                            <span class="badge 
+                                {% if order.status == 'completed' %}bg-success
+                                {% elif order.status == 'in_progress' %}bg-primary
+                                {% elif order.status == 'cancelled' %}bg-danger
+                                {% else %}bg-secondary{% endif %}">
+                                {{ order.status }}
+                            </span>
+                        </td>
+                        <td>{{ "%.2f"|format(order.total_amount) }} руб.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted">Нет заказов</p>
+            {% endif %}
+            <a href="/orders" class="btn btn-outline-primary btn-sm">Все заказы</a>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Быстрые действия в зависимости от роли -->
 <div class="row mt-4">

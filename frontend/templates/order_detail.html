@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>{{ order.title or 'Заказ' }}</h2>
+        <div>
+            {% if user.role in ['engineer', 'manager', 'admin'] %}
+            <a href="{{ url_for('edit_order', order_id=order.id) }}" class="btn btn-warning">Редактировать</a>
+            {% endif %}
+            <a href="{{ url_for('orders_page') }}" class="btn btn-outline-secondary">Назад к списку</a>
+        </div>
+    </div>
+
+    {% if order %}
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Информация о заказе</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table">
+                        <tr>
+                            <th width="30%">Название:</th>
+                            <td>{{ order.title }}</td>
+                        </tr>
+                        <tr>
+                            <th>Описание:</th>
+                            <td>{{ order.description or '—' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Статус:</th>
+                            <td>
+                                <span class="badge 
+                                    {% if order.status == 'completed' %}bg-success
+                                    {% elif order.status == 'in_progress' %}bg-primary
+                                    {% elif order.status == 'cancelled' %}bg-danger
+                                    {% else %}bg-secondary{% endif %}">
+                                    {% if order.status == 'created' %}создан
+                                    {% elif order.status == 'in_progress' %}в работе
+                                    {% elif order.status == 'completed' %}выполнен
+                                    {% elif order.status == 'cancelled' %}отменен
+                                    {% else %}{{ order.status }}{% endif %}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Общая сумма:</th>
+                            <td><strong>{{ "%.2f"|format(order.total_amount) }} руб.</strong></td>
+                        </tr>
+                        <tr>
+                            <th>Дата создания:</th>
+                            <td>{{ order.created_at }}</td>
+                        </tr>
+                        <tr>
+                            <th>Последнее обновление:</th>
+                            <td>{{ order.updated_at or order.created_at }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Действия</h5>
+                </div>
+                <div class="card-body">
+                    {% if user.role in ['engineer', 'manager', 'admin'] and order.status in ['created', 'in_progress'] %}
+                    <div class="d-grid gap-2">
+                        {% if order.status == 'created' %}
+                        <form method="POST" action="{{ url_for('update_order_status', order_id=order.id) }}">
+                            <input type="hidden" name="status" value="in_progress">
+                            <button type="submit" class="btn btn-primary w-100">Взять в работу</button>
+                        </form>
+                        {% endif %}
+                        
+                        {% if order.status == 'in_progress' %}
+                        <form method="POST" action="{{ url_for('update_order_status', order_id=order.id) }}">
+                            <input type="hidden" name="status" value="completed">
+                            <button type="submit" class="btn btn-success w-100">Завершить</button>
+                        </form>
+                        {% endif %}
+                        
+                        <form method="POST" action="{{ url_for('cancel_order', order_id=order.id) }}" 
+                              onsubmit="return confirm('Отменить этот заказ?')">
+                            <button type="submit" class="btn btn-danger w-100">Отменить заказ</button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <p class="text-muted">Действия недоступны для текущего статуса заказа.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">Состав заказа</h5>
+        </div>
+        <div class="card-body">
+            {% if order.items %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Товар/Услуга</th>
+                            <th>Количество</th>
+                            <th>Цена за единицу</th>
+                            <th>Сумма</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in order.items %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ item.product }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>{{ "%.2f"|format(item.unit_price) }} руб.</td>
+                            <td><strong>{{ "%.2f"|format(item.quantity * item.unit_price) }} руб.</strong></td>
+                        </tr>
+                        {% endfor %}
+                        <tr class="table-success">
+                            <td colspan="4" class="text-end"><strong>ИТОГО:</strong></td>
+                            <td><strong>{{ "%.2f"|format(order.total_amount) }} руб.</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">Нет позиций в заказе.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">
+        <h5>Заказ не найден</h5>
+        <p>Запрошенный заказ не существует или был удален.</p>
+        <a href="{{ url_for('orders_page') }}" class="btn btn-primary">Вернуться к списку заказов</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

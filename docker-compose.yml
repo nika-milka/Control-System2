@@ -11,6 +11,7 @@ services:
     depends_on:
       - users-service
       - tasks-service
+      - orders-service
     networks:
       - app-network
 
@@ -28,6 +29,15 @@ services:
     build: ./service_tasks
     ports:
       - "5002:5002"
+    environment:
+      - FLASK_ENV=development
+    networks:
+      - app-network
+
+  orders-service:
+    build: ./service_orders
+    ports:
+      - "5004:5004"
     environment:
       - FLASK_ENV=development
     networks:

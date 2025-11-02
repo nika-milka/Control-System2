@@ -126,6 +126,7 @@ def dashboard():
     # Инициализация данных
     defects = []
     tasks = []
+    orders = []
     statistics = {}
     
     try:
@@ -141,8 +142,6 @@ def dashboard():
             
             if defects_response.status_code == 200:
                 defects_data = defects_response.json()
-                print(f"📦 Данные дефектов: {json.dumps(defects_data, indent=2, ensure_ascii=False)}")
-                
                 if defects_data.get('success'):
                     defects = defects_data.get('data', {}).get('defects', [])
                     print(f"✅ Загружено дефектов: {len(defects)}")
@@ -169,6 +168,31 @@ def dashboard():
                 print(f"⚠️  API вернул success=false для задач: {tasks_data.get('error')}")
         else:
             print(f"❌ Ошибка получения задач: {tasks_response.status_code} - {tasks_response.text}")
+        
+        # Получение заказов (для инженеров, менеджеров и админов)
+        if user['role'] in ['engineer', 'manager', 'admin']:
+            print("🛒 Запрос заказов...")
+            orders_response = requests.get(
+                f'{API_BASE_URL}/orders?limit=5', 
+                headers=get_auth_headers(),
+                timeout=10
+            )
+            print(f"📡 Ответ заказов: {orders_response.status_code}")
+            
+            if orders_response.status_code == 200:
+                orders_data = orders_response.json()
+                if orders_data.get('success'):
+                    orders = orders_data.get('data', {}).get('orders', [])
+                    print(f"✅ Загружено заказов: {len(orders)}")
+                    
+                    # Отладочная информация о структуре данных заказов
+                    for order in orders:
+                        items = order.get('items', [])
+                        print(f"📋 Заказ {order.get('id', 'N/A')}: items type = {type(items)}, items count = {len(items) if isinstance(items, list) else 'N/A'}")
+                else:
+                    print(f"⚠️  API вернул success=false для заказов: {orders_data.get('error')}")
+            else:
+                print(f"❌ Ошибка получения заказов: {orders_response.status_code}")
         
         # Получение статистики (для руководителей и админов)
         if user['role'] in ['director', 'admin']:
@@ -197,12 +221,13 @@ def dashboard():
     except Exception as e:
         print(f"❌ Неожиданная ошибка при загрузке данных: {e}")
     
-    print(f"🎯 Итоговые данные для рендеринга: {len(defects)} дефектов, {len(tasks)} задач")
+    print(f"🎯 Итоговые данные для рендеринга: {len(defects)} дефектов, {len(tasks)} задач, {len(orders)} заказов")
     
     return render_template('dashboard.html', 
                          user=user, 
                          defects=defects[:5],
                          tasks=tasks[:5],
+                         orders=orders[:5],
                          statistics=statistics)
 
 @app.route('/defects')
@@ -282,6 +307,69 @@ def tasks_page():
         print(f"❌ Ошибка при загрузке задач: {e}")
     
     return render_template('tasks.html', user=user, tasks=tasks, now=datetime.now())
+
+@app.route('/orders')
+def orders_page():
+    if 'token' not in session:
+        return redirect(url_for('login'))
+    
+    user = session['user']
+    # Заказы доступны инженерам, менеджерам и админам
+    if user['role'] not in ['engineer', 'manager', 'admin']:
+        print(f"🚫 Нет прав на просмотр заказов: {user['role']}")
+        return redirect(url_for('dashboard'))
+    
+    print(f"🛒 Страница заказов для: {user['name']}")
+    
+    # Параметры пагинации
+    page = request.args.get('page', 1, type=int)
+    status_filter = request.args.get('status', '')
+    
+    orders = []
+    pagination = {}
+    
+    try:
+        # Формируем URL с параметрами
+        url = f'{API_BASE_URL}/orders?page={page}&limit=10'
+        if status_filter:
+            url += f'&status={status_filter}'
+        
+        response = requests.get(
+            url, 
+            headers=get_auth_headers(),
+            timeout=10
+        )
+        print(f"📡 Ответ заказов: {response.status_code}")
+        
+        if response.status_code == 200:
+            orders_data = response.json()
+            print(f"📦 Данные заказов: {json.dumps(orders_data, indent=2, ensure_ascii=False)}")
+            
+            if orders_data.get('success'):
+                orders = orders_data.get('data', {}).get('orders', [])
+                pagination = orders_data.get('data', {}).get('pagination', {})
+                print(f"✅ Найдено заказов: {len(orders)}")
+                
+                # Отладочная информация о структуре данных
+                for order in orders:
+                    items = order.get('items', [])
+                    print(f"📋 Заказ {order.get('id', 'N/A')}: items type = {type(items)}, items count = {len(items) if isinstance(items, list) else 'N/A'}")
+            else:
+                print(f"⚠️  API вернул success=false для заказов: {orders_data.get('error')}")
+        else:
+            print(f"❌ Ошибка получения заказов: {response.status_code}")
+            
+    except requests.exceptions.ConnectionError:
+        print("❌ Ошибка подключения на странице заказов")
+    except Exception as e:
+        print(f"❌ Ошибка при загрузке заказов: {e}")
+    
+    return render_template('orders.html', 
+                         user=user, 
+                         orders=orders,
+                         pagination=pagination,
+                         status_filter=status_filter,
+                         now=datetime.now())
 
 @app.route('/reports')
 def reports_page():
@@ -417,6 +505,131 @@ def create_task():
         print(f"❌ Ошибка создания задачи: {e}")
     
     return redirect(url_for('tasks_page'))
+
+@app.route('/create_order', methods=['POST'])
+def create_order():
+    if 'token' not in session:
+        return redirect(url_for('login'))
+    
+    user = session['user']
+    # Создание заказов - только инженеры, менеджеры и админы
+    if user['role'] not in ['engineer', 'manager', 'admin']:
+        print(f"🚫 Нет прав на создание заказов: {user['role']}")
+        return redirect(url_for('dashboard'))
+    
+    try:
+        title = request.form.get('title')
+        description = request.form.get('description', '')
+        
+        # Получаем items из формы
+        items = []
+        item_count = int(request.form.get('item_count', 0))
+        
+        for i in range(1, item_count + 1):
+            product = request.form.get(f'item_product_{i}')
+            quantity = request.form.get(f'item_quantity_{i}')
+            unit_price = request.form.get(f'item_price_{i}')
+            
+            if product and quantity and unit_price:
+                items.append({
+                    'product': product.strip(),
+                    'quantity': int(quantity),
+                    'unit_price': float(unit_price)
+                })
+        
+        if not items:
+            print("❌ Нет позиций в заказе")
+            return redirect(url_for('orders_page'))
+        
+        print(f"🔄 Создание заказа: {title} с {len(items)} позициями")
+        
+        response = requests.post(
+            f'{API_BASE_URL}/orders',
+            json={
+                'title': title,
+                'description': description,
+                'items': items
+            },
+            headers=get_auth_headers(),
+            timeout=10
+        )
+        
+        print(f"📡 Ответ создания заказа: {response.status_code}")
+        
+        if response.status_code == 201:
+            print("✅ Заказ успешно создан")
+        else:
+            error_data = response.json()
+            print(f"❌ Ошибка создания заказа: {error_data.get('error')}")
+            
+    except Exception as e:
+        print(f"❌ Ошибка создания заказа: {e}")
+    
+    return redirect(url_for('orders_page'))
+
+@app.route('/update_order/<order_id>', methods=['POST'])
+def update_order(order_id):
+    if 'token' not in session:
+        return redirect(url_for('login'))
+    
+    user = session['user']
+    # Редактирование заказов - только инженеры, менеджеры и админы
+    if user['role'] not in ['engineer', 'manager', 'admin']:
+        print(f"🚫 Нет прав на редактирование заказов: {user['role']}")
+        return redirect(url_for('dashboard'))
+    
+    try:
+        title = request.form.get('title')
+        description = request.form.get('description', '')
+        status = request.form.get('status')
+        
+        # Получаем items из формы
+        items = []
+        item_count = int(request.form.get('item_count', 0))
+        
+        for i in range(1, item_count + 1):
+            product = request.form.get(f'item_product_{i}')
+            quantity = request.form.get(f'item_quantity_{i}')
+            unit_price = request.form.get(f'item_price_{i}')
+            
+            if product and quantity and unit_price:
+                items.append({
+                    'product': product.strip(),
+                    'quantity': int(quantity),
+                    'unit_price': float(unit_price)
+                })
+        
+        update_data = {}
+        if title:
+            update_data['title'] = title
+        if description is not None:
+            update_data['description'] = description
+        if status:
+            update_data['status'] = status
+        if items:
+            update_data['items'] = items
+        
+        print(f"🔄 Редактирование заказа {order_id}: {update_data}")
+        
+        response = requests.put(
+            f'{API_BASE_URL}/orders/{order_id}',
+            json=update_data,
+            headers=get_auth_headers(),
+            timeout=10
+        )
+        
+        print(f"📡 Ответ редактирования заказа: {response.status_code}")
+        
+        if response.status_code == 200:
+            print("✅ Заказ успешно обновлен")
+        else:
+            error_data = response.json()
+            print(f"❌ Ошибка редактирования заказа: {error_data.get('error', 'Unknown error')}")
+            
+    except Exception as e:
+        print(f"❌ Ошибка редактирования заказа: {e}")
+    
+    return redirect(url_for('order_detail', order_id=order_id))
 
 @app.route('/create_report', methods=['POST'])
 def create_report():
@@ -576,6 +789,131 @@ def edit_defect(defect_id):
         print(f"❌ Ошибка загрузки дефекта для редактирования: {e}")
     
     return render_template('edit_defect.html', user=user, defect=defect)
+
+@app.route('/edit_order/<order_id>', methods=['GET'])
+def edit_order(order_id):
+    if 'token' not in session:
+        return redirect(url_for('login'))
+    
+    user = session['user']
+    # Редактирование заказов - только инженеры, менеджеры и админы
+    if user['role'] not in ['engineer', 'manager', 'admin']:
+        return redirect(url_for('dashboard'))
+    
+    order = {}
+    try:
+        response = requests.get(
+            f'{API_BASE_URL}/orders/{order_id}', 
+            headers=get_auth_headers(),
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            order_data = response.json()
+            if order_data.get('success'):
+                order = order_data.get('data', {})
+                print(f"📦 Данные заказа для редактирования: {json.dumps(order, indent=2, ensure_ascii=False)}")
+        
+    except Exception as e:
+        print(f"❌ Ошибка загрузки заказа для редактирования: {e}")
+    
+    return render_template('edit_order.html', user=user, order=order)
+
+@app.route('/update_order_status/<order_id>', methods=['POST'])
+def update_order_status(order_id):
+    if 'token' not in session:
+        return redirect(url_for('login'))
+    
+    user = session['user']
+    # Обновление заказов - только инженеры, менеджеры и админы
+    if user['role'] not in ['engineer', 'manager', 'admin']:
+        return redirect(url_for('dashboard'))
+    
+    try:
+        status = request.form.get('status')
+        
+        print(f"🔄 Обновление статуса заказа {order_id} на статус {status}")
+        
+        response = requests.put(
+            f'{API_BASE_URL}/orders/{order_id}',
+            json={'status': status},
+            headers=get_auth_headers(),
+            timeout=10
+        )
+        
+        print(f"📡 Ответ обновления статуса заказа: {response.status_code}")
+        
+        if response.status_code == 200:
+            print("✅ Статус заказа успешно обновлен")
+        else:
+            error_data = response.json()
+            print(f"❌ Ошибка обновления статуса заказа: {error_data.get('error', 'Unknown error')}")
+            
+    except Exception as e:
+        print(f"❌ Ошибка обновления статуса заказа: {e}")
+    
+    return redirect(url_for('orders_page'))
+
+@app.route('/cancel_order/<order_id>', methods=['POST'])
+def cancel_order(order_id):
+    if 'token' not in session:
+        return redirect(url_for('login'))
+    
+    user = session['user']
+    # Отмена заказов - только инженеры, менеджеры и админы
+    if user['role'] not in ['engineer', 'manager', 'admin']:
+        return redirect(url_for('dashboard'))
+    
+    try:
+        print(f"🔄 Отмена заказа {order_id}")
+        
+        response = requests.post(
+            f'{API_BASE_URL}/orders/{order_id}/cancel',
+            headers=get_auth_headers(),
+            timeout=10
+        )
+        
+        print(f"📡 Ответ отмены заказа: {response.status_code}")
+        
+        if response.status_code == 200:
+            print("✅ Заказ успешно отменен")
+        else:
+            error_data = response.json()
+            print(f"❌ Ошибка отмены заказа: {error_data.get('error', 'Unknown error')}")
+            
+    except Exception as e:
+        print(f"❌ Ошибка отмены заказа: {e}")
+    
+    return redirect(url_for('orders_page'))
+
+@app.route('/order/<order_id>')
+def order_detail(order_id):
+    if 'token' not in session:
+        return redirect(url_for('login'))
+    
+    user = session['user']
+    # Просмотр деталей заказов - инженеры, менеджеры и админы
+    if user['role'] not in ['engineer', 'manager', 'admin']:
+        return redirect(url_for('dashboard'))
+    
+    order = {}
+    try:
+        response = requests.get(
+            f'{API_BASE_URL}/orders/{order_id}', 
+            headers=get_auth_headers(),
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            order_data = response.json()
+            if order_data.get('success'):
+                order = order_data.get('data', {})
+                print(f"📦 Данные заказа: {json.dumps(order, indent=2, ensure_ascii=False)}")
+        
+    except Exception as e:
+        print(f"❌ Ошибка загрузки заказа: {e}")
+    
+    return render_template('order_detail.html', user=user, order=order)
 
 @app.route('/update_task/<task_id>', methods=['POST'])
 def update_task(task_id):

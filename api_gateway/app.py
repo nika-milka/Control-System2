@@ -24,7 +24,8 @@ limiter = Limiter(
 
 SERVICES = {
     'users': 'http://users-service:5001',
-    'tasks': 'http://tasks-service:5002'
+    'tasks': 'http://tasks-service:5002',
+    'orders': 'http://orders-service:5004'  # Добавляем сервис заказов
 }
 
 logging.basicConfig(level=logging.INFO)
@@ -100,6 +101,8 @@ def forward_request(service, path, method='GET', data=None):
             headers['X-User-Email'] = request.current_user['email']
             headers['X-User-Role'] = request.current_user['role']
         
+        logger.info(f"Forwarding request to {url} with method {method}")
+        
         if method.upper() == 'GET':
             response = requests.request(
                 method=method.upper(),
@@ -116,16 +119,30 @@ def forward_request(service, path, method='GET', data=None):
                 timeout=30
             )
         
+        logger.info(f"Response from {service} service: {response.status_code}")
+        
         return Response(
             response=response.content,
             status=response.status_code,
             headers=dict(response.headers)
         )
-    except Exception as e:
-        logger.error(f"Service error: {str(e)}")
+    except requests.exceptions.ConnectionError:
+        logger.error(f"Connection error to {service} service: {url}")
         return jsonify({
             'success': False,
-            'error': {'code': 'SERVICE_UNAVAILABLE', 'message': 'Service unavailable'}
+            'error': {'code': 'SERVICE_UNAVAILABLE', 'message': f'{service.capitalize()} service unavailable'}
+        }), 503
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout error to {service} service: {url}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVICE_TIMEOUT', 'message': f'{service.capitalize()} service timeout'}
+        }), 503
+    except Exception as e:
+        logger.error(f"Service error to {service}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': {'code': 'SERVICE_ERROR', 'message': 'Service error'}
         }), 503
 
 @app.before_request
@@ -191,6 +208,33 @@ def tasks_get_proxy(path):
 def tasks_update_proxy(path):
     return forward_request('tasks', f'v1/tasks/{path}', 'PUT', request.get_json())
 
+# Orders routes - новые маршруты для заказов
+@app.route('/v1/orders', methods=['GET', 'POST'])
+@token_required
+@limiter.limit(HIGH_LIMITS)
+def orders_proxy():
+    if request.method == 'GET':
+        return forward_request('orders', 'v1/orders', 'GET')
+    else:
+        return forward_request('orders', 'v1/orders', 'POST', request.get_json())
+
+@app.route('/v1/orders/<path:path>', methods=['GET', 'PUT', 'DELETE'])
+@token_required
+@limiter.limit(MEDIUM_LIMITS)
+def orders_management_proxy(path):
+    if request.method == 'GET':
+        return forward_request('orders', f'v1/orders/{path}', 'GET')
+    elif request.method == 'PUT':
+        return forward_request('orders', f'v1/orders/{path}', 'PUT', request.get_json())
+    elif request.method == 'DELETE':
+        return forward_request('orders', f'v1/orders/{path}', 'DELETE')
+
+@app.route('/v1/orders/<path:path>/cancel', methods=['POST'])
+@token_required
+@limiter.limit(MEDIUM_LIMITS)
+def orders_cancel_proxy(path):
+    return forward_request('orders', f'v1/orders/{path}/cancel', 'POST', request.get_json())
+
 # Reports routes - требуют аутентификации
 @app.route('/v1/reports', methods=['GET', 'POST'])
 @token_required
@@ -233,6 +277,63 @@ def statistics_proxy():
 def health():
     return jsonify({'status': 'healthy', 'service': 'api-gateway'})
 
+# Health checks для всех сервисов
+@app.route('/health/all', methods=['GET'])
+@limiter.exempt
+def health_all():
+    services_status = {}
+    
+    # Проверка сервиса пользователей
+    try:
+        response = requests.get(f"{SERVICES['users']}/health", timeout=5)
+        services_status['users'] = {
+            'status': 'healthy' if response.status_code == 200 else 'unhealthy',
+            'status_code': response.status_code
+        }
+    except Exception as e:
+        services_status['users'] = {
+            'status': 'unavailable',
+            'error': str(e)
+        }
+    
+    # Проверка сервиса задач
+    try:
+        response = requests.get(f"{SERVICES['tasks']}/health", timeout=5)
+        services_status['tasks'] = {
+            'status': 'healthy' if response.status_code == 200 else 'unhealthy',
+            'status_code': response.status_code
+        }
+    except Exception as e:
+        services_status['tasks'] = {
+            'status': 'unavailable',
+            'error': str(e)
+        }
+    
+    # Проверка сервиса заказов
+    try:
+        response = requests.get(f"{SERVICES['orders']}/health", timeout=5)
+        services_status['orders'] = {
+            'status': 'healthy' if response.status_code == 200 else 'unhealthy',
+            'status_code': response.status_code
+        }
+    except Exception as e:
+        services_status['orders'] = {
+            'status': 'unavailable',
+            'error': str(e)
+        }
+    
+    all_healthy = all(
+        service['status'] == 'healthy' 
+        for service in services_status.values() 
+        if 'status' in service
+    )
+    
+    return jsonify({
+        'status': 'healthy' if all_healthy else 'degraded',
+        'services': services_status,
+        'timestamp': datetime.datetime.now().isoformat()
+    })
+
 # Обработка ошибок rate limiting
 @app.errorhandler(429)
 def ratelimit_handler(e):
@@ -245,5 +346,56 @@ def ratelimit_handler(e):
         }
     }), 429
 
+# Обработка 404 ошибок
+@app.errorhandler(404)
+def not_found_handler(e):
+    return jsonify({
+        'success': False,
+        'error': {
+            'code': 'ENDPOINT_NOT_FOUND',
+            'message': 'Endpoint not found',
+            'details': f'The requested endpoint {request.path} was not found.'
+        }
+    }), 404
+
+# Обработка 405 ошибок
+@app.errorhandler(405)
+def method_not_allowed_handler(e):
+    return jsonify({
+        'success': False,
+        'error': {
+            'code': 'METHOD_NOT_ALLOWED',
+            'message': 'Method not allowed',
+            'details': f'The method {request.method} is not allowed for this endpoint.'
+        }
+    }), 405
+
+# Обработка 500 ошибок
+@app.errorhandler(500)
+def internal_error_handler(e):
+    return jsonify({
+        'success': False,
+        'error': {
+            'code': 'INTERNAL_SERVER_ERROR',
+            'message': 'Internal server error',
+            'details': 'An internal server error occurred. Please try again later.'
+        }
+    }), 500
+
+# CORS настройки
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Request-ID')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
+
+# OPTIONS обработчик для CORS preflight
+@app.route('/v1/<path:path>', methods=['OPTIONS'])
+def options_handler(path):
+    return '', 200
+
 if __name__ == '__main__':
+    logger.info("🚀 Запуск API Gateway...")
+    logger.info(f"Доступные сервисы: {SERVICES}")
     app.run(host='0.0.0.0', port=5000, debug=True)
