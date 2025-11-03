@@ -28,7 +28,7 @@
 
 ```bash
 # 1. Клонируйте репозиторий
-git clone [<repository-url>](https://github.com/nika-milka/Control-System2.git)
+git clone https://github.com/nika-milka/Control-System2.git
 cd Control-system2
 
 # 2. Запустите приложение
