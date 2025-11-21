@@ -64,8 +64,8 @@ def create_jwt_token(user_data):
         'user_id': user_data['id'],
         'email': user_data['email'],
         'role': user_data['role'],
-        'exp': datetime.datetime.utcnow() + app.config['JWT_ACCESS_TOKEN_EXPIRES'],
-        'iat': datetime.datetime.utcnow()
+        'exp': datetime.datetime.now(datetime.UTC) + app.config['JWT_ACCESS_TOKEN_EXPIRES'],
+        'iat': datetime.datetime.now(datetime.UTC)
     }
     return jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm='HS256')
 

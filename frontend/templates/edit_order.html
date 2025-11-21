@@ -128,7 +128,7 @@
 </div>
 
 <script>
-let itemCounter = {{ order.items|length if order.items else 1 }};
+let itemCounter = parseInt(document.getElementById('itemCount').value);
 
 function addItem() {
     itemCounter++;
